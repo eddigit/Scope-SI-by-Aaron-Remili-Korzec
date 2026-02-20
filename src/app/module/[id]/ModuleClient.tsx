@@ -6,25 +6,29 @@ import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import ProgressBar from "@/components/ProgressBar";
 import { modules } from "@/data/modules";
-import { getProgress, getModuleCompletion } from "@/lib/store";
+import { apiGetMe, computeModuleCompletion } from "@/lib/api";
+import type { ProgressData } from "@/lib/api";
 
 export default function ModuleClient() {
   const params = useParams();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [progressData, setProgressData] = useState<ProgressData | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    if (!getProgress()) router.replace("/");
+    apiGetMe().then((session) => {
+      if (!session) { router.replace("/"); return; }
+      setProgressData(session.progress);
+      setLoading(false);
+    });
   }, [router]);
 
   const mod = modules.find((m) => m.id === params.id);
 
-  if (!mounted || !mod) return null;
+  if (loading || !mod || !progressData) return null;
 
-  const progress = getModuleCompletion(mod.id, mod.fiches.length, mod.activites.length);
-  const userProgress = getProgress();
-  const modProgress = userProgress?.modules[mod.id];
+  const progress = computeModuleCompletion(progressData, mod.id, mod.fiches.length, mod.activites.length);
+  const modProgress = progressData.modules[mod.id];
 
   return (
     <div className="min-h-dvh bg-[var(--color-surface)] pb-20">

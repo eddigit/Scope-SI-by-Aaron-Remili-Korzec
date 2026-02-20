@@ -4,42 +4,55 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import { modules, TEACHER_CODES } from "@/data/modules";
-import { getProgress, getClassData, clearProgress } from "@/lib/store";
+import { apiGetMe, apiLogout, apiGetClassData } from "@/lib/api";
+import type { StudentSession, ProgressData } from "@/lib/api";
+
+interface ClassStudent {
+  id: string;
+  pseudo: string;
+  modules: { module_id: string; fiches_read: string[]; activites_completed: string[] }[];
+  badges: string[];
+}
 
 function TeacherContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isTeacher, setIsTeacher] = useState(false);
   const [classCode, setClassCode] = useState("");
-  const [classData, setClassData] = useState<Record<string, { modules: Record<string, { fichesRead: string[]; activitesCompleted: string[] }>; badges: string[] }> | null>(null);
+  const [student, setStudent] = useState<StudentSession | null>(null);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [classStudents, setClassStudents] = useState<ClassStudent[]>([]);
 
   useEffect(() => {
-    setMounted(true);
-
     const teacherCode = searchParams.get("teacher");
     const code = searchParams.get("code");
 
     if (teacherCode && code && TEACHER_CODES[teacherCode] === code) {
       setIsTeacher(true);
       setClassCode(code);
-      setClassData(getClassData(code));
+      apiGetClassData(code, teacherCode)
+        .then((students) => {
+          setClassStudents(students as ClassStudent[]);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     } else {
-      const p = getProgress();
-      if (!p) {
-        router.replace("/");
-        return;
-      }
-      setClassCode(p.classCode);
+      apiGetMe().then((session) => {
+        if (!session) { router.replace("/"); return; }
+        setStudent(session.student);
+        setProgress(session.progress);
+        setClassCode(session.student.classCode);
+        setLoading(false);
+      });
     }
   }, [router, searchParams]);
 
-  if (!mounted) return null;
+  if (loading) return null;
 
   // Student profile view
   if (!isTeacher) {
-    const progress = getProgress();
-    if (!progress) return null;
+    if (!student || !progress) return null;
 
     return (
       <div className="min-h-dvh bg-[var(--color-surface)] pb-20">
@@ -57,10 +70,10 @@ function TeacherContent() {
               </div>
               <div>
                 <p className="font-bold text-lg text-[var(--color-navy)]">
-                  {progress.pseudo || "Explorateur"}
+                  {student.pseudo || "Explorateur"}
                 </p>
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  Classe : {progress.classCode}
+                  Classe : {student.classCode}
                 </p>
               </div>
             </div>
@@ -87,10 +100,14 @@ function TeacherContent() {
               </div>
               <div className="bg-[var(--color-surface)] rounded-xl p-3 text-center">
                 <p className="text-2xl font-extrabold text-[var(--color-purple)]">
-                  {Object.values(progress.modules).reduce((s, m) => {
-                    const scores = Object.values(m.scores);
-                    return s + (scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0);
-                  }, 0) || 0}%
+                  {(() => {
+                    const allScores = Object.values(progress.modules).flatMap(
+                      (m) => Object.values(m.scores)
+                    );
+                    return allScores.length > 0
+                      ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
+                      : 0;
+                  })()}%
                 </p>
                 <p className="text-xs text-[var(--color-text-secondary)]">Score moyen</p>
               </div>
@@ -98,8 +115,8 @@ function TeacherContent() {
           </div>
 
           <button
-            onClick={() => {
-              clearProgress();
+            onClick={async () => {
+              await apiLogout();
               router.replace("/");
             }}
             className="w-full py-3 rounded-2xl border-2 border-red-200 text-[var(--color-danger)] text-sm font-bold hover:bg-red-50 transition-colors"
@@ -114,7 +131,7 @@ function TeacherContent() {
   }
 
   // Teacher dashboard
-  const studentCount = classData ? Object.keys(classData).length : 0;
+  const studentCount = classStudents.length;
 
   return (
     <div className="min-h-dvh bg-[var(--color-surface)] pb-8">
@@ -136,32 +153,47 @@ function TeacherContent() {
         {studentCount === 0 ? (
           <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
             <p className="text-4xl mb-3">📊</p>
-            <p className="text-sm font-bold text-[var(--color-navy)]">Pas encore de données</p>
+            <p className="text-sm font-bold text-[var(--color-navy)]">Pas encore d'élèves</p>
             <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-              Les données apparaîtront quand des élèves utiliseront l'app sur cet appareil.
-            </p>
-            <p className="text-[10px] text-gray-400 mt-3">
-              Note : les données sont stockées localement (localStorage), pas sur un serveur.
+              Les données apparaîtront quand des élèves rejoindront avec le code classe.
             </p>
           </div>
         ) : (
           <>
-            {/* Module completion overview */}
+            {/* Students list */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <h2 className="text-sm font-bold text-[var(--color-navy)] mb-3">Élèves</h2>
+              <div className="space-y-2">
+                {classStudents.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between bg-[var(--color-surface)] rounded-xl p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[var(--color-primary-light)] flex items-center justify-center text-sm">
+                        🦉
+                      </div>
+                      <p className="text-sm font-semibold text-[var(--color-navy)]">{s.pseudo}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[var(--color-primary)]">
+                        {(s.badges || []).length} badges
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Module stats */}
             {modules.map((mod) => {
               let totalFiches = 0;
               let totalActivites = 0;
-              let totalScores: number[] = [];
 
-              if (classData) {
-                Object.values(classData).forEach((student) => {
-                  const sm = student.modules[mod.id];
-                  if (sm) {
-                    totalFiches += sm.fichesRead.length;
-                    totalActivites += sm.activitesCompleted.length;
-                    Object.values(sm as unknown as Record<string, Record<string, number>>).forEach(() => {});
-                  }
-                });
-              }
+              classStudents.forEach((s) => {
+                const modData = (s.modules || []).find((m) => m.module_id === mod.id);
+                if (modData) {
+                  totalFiches += (modData.fiches_read || []).length;
+                  totalActivites += (modData.activites_completed || []).length;
+                }
+              });
 
               const avgFiches = studentCount > 0 ? (totalFiches / studentCount).toFixed(1) : "0";
               const avgActivites = studentCount > 0 ? (totalActivites / studentCount).toFixed(1) : "0";

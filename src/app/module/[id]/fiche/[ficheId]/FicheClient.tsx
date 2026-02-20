@@ -4,30 +4,28 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { modules } from "@/data/modules";
-import { getProgress, markFicheRead, reportProgressToClass } from "@/lib/store";
+import { apiGetMe, apiMarkFicheRead } from "@/lib/api";
 
 export default function FicheClient() {
   const params = useParams();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-    if (!getProgress()) {
-      router.replace("/");
-      return;
-    }
-    // Mark fiche as read
-    if (typeof params.id === "string" && typeof params.ficheId === "string") {
-      markFicheRead(params.id, params.ficheId);
-      reportProgressToClass();
-    }
+    apiGetMe().then((session) => {
+      if (!session) { router.replace("/"); return; }
+      setLoading(false);
+      // Mark fiche as read in DB
+      if (typeof params.id === "string" && typeof params.ficheId === "string") {
+        apiMarkFicheRead(params.id, params.ficheId).catch(() => {});
+      }
+    });
   }, [params.id, params.ficheId, router]);
 
   const mod = modules.find((m) => m.id === params.id);
   const fiche = mod?.fiches.find((f) => f.id === params.ficheId);
 
-  if (!mounted || !mod || !fiche) return null;
+  if (loading || !mod || !fiche) return null;
 
   // Find next fiche or first activity
   const ficheIdx = mod.fiches.findIndex((f) => f.id === fiche.id);

@@ -5,24 +5,22 @@ import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import Mascot from "@/components/Mascot";
 import { allBadges } from "@/data/modules";
-import { getProgress } from "@/lib/store";
+import { apiGetMe } from "@/lib/api";
 
 export default function BadgesPage() {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [earned, setEarned] = useState<string[]>([]);
 
   useEffect(() => {
-    setMounted(true);
-    const p = getProgress();
-    if (!p) {
-      router.replace("/");
-      return;
-    }
-    setEarned(p.badges);
+    apiGetMe().then((session) => {
+      if (!session) { router.replace("/"); return; }
+      setEarned(session.progress.badges);
+      setLoading(false);
+    });
   }, [router]);
 
-  if (!mounted) return null;
+  if (loading) return null;
 
   return (
     <div className="min-h-dvh bg-[var(--color-surface)] pb-20">

@@ -4,19 +4,20 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { modules } from "@/data/modules";
 import {
-  getProgress,
-  markActiviteCompleted,
-  addBadge,
-  reportProgressToClass,
-  getModuleCompletion,
-} from "@/lib/store";
+  apiGetMe,
+  apiMarkActiviteCompleted,
+  apiAddBadge,
+  computeModuleCompletion,
+} from "@/lib/api";
+import type { ProgressData } from "@/lib/api";
 import type { QuizQuestion } from "@/data/modules";
 import Mascot from "@/components/Mascot";
 
 export default function ActiviteClient() {
   const params = useParams();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [currentQ, setCurrentQ] = useState(0);
   const [selected, setSelected] = useState<string | number | null>(null);
   const [showResult, setShowResult] = useState(false);
@@ -27,8 +28,11 @@ export default function ActiviteClient() {
   const [rankScore, setRankScore] = useState(0);
 
   useEffect(() => {
-    setMounted(true);
-    if (!getProgress()) router.replace("/");
+    apiGetMe().then((session) => {
+      if (!session) { router.replace("/"); return; }
+      setProgressData(session.progress);
+      setLoading(false);
+    });
   }, [router]);
 
   const mod = modules.find((m) => m.id === params.id);
@@ -42,16 +46,18 @@ export default function ActiviteClient() {
     }
   }, [activite, rankOrder.length]);
 
-  const checkBadge = useCallback(() => {
+  const checkBadge = useCallback(async () => {
     if (!mod) return;
-    const completion = getModuleCompletion(mod.id, mod.fiches.length, mod.activites.length);
+    // Re-fetch progress to check completion
+    const session = await apiGetMe();
+    if (!session) return;
+    const completion = computeModuleCompletion(session.progress, mod.id, mod.fiches.length, mod.activites.length);
     if (completion >= 100) {
-      addBadge(mod.badgeId);
+      await apiAddBadge(mod.badgeId).catch(() => {});
     }
-    reportProgressToClass();
   }, [mod]);
 
-  if (!mounted || !mod || !activite) return null;
+  if (loading || !mod || !activite) return null;
 
   // Quiz handler
   function handleAnswer(answer: string | number) {
@@ -69,7 +75,7 @@ export default function ActiviteClient() {
     const questions = activite!.questions!;
     if (currentQ + 1 >= questions.length) {
       const finalScore = Math.round((score / questions.length) * 100);
-      markActiviteCompleted(mod!.id, activite!.id, finalScore);
+      apiMarkActiviteCompleted(mod!.id, activite!.id, finalScore).catch(() => {});
       checkBadge();
       setFinished(true);
     } else {
@@ -98,7 +104,7 @@ export default function ActiviteClient() {
     const pct = Math.round((correct / activite.items.length) * 100);
     setRankScore(pct);
     setRankSubmitted(true);
-    markActiviteCompleted(mod!.id, activite!.id, pct);
+    apiMarkActiviteCompleted(mod!.id, activite!.id, pct).catch(() => {});
     checkBadge();
   }
 
@@ -109,7 +115,7 @@ export default function ActiviteClient() {
         mod={mod}
         activite={activite}
         onComplete={() => {
-          markActiviteCompleted(mod.id, activite.id, 100);
+          apiMarkActiviteCompleted(mod.id, activite.id, 100).catch(() => {});
           checkBadge();
         }}
         onBack={() => router.push(`/module/${mod.id}`)}

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Mascot from "@/components/Mascot";
 import { VALID_CLASS_CODES, TEACHER_CODES } from "@/data/modules";
-import { getProgress, initProgress } from "@/lib/store";
+import { apiJoin, apiGetMe } from "@/lib/api";
 
 export default function HomePage() {
   const router = useRouter();
@@ -12,17 +12,25 @@ export default function HomePage() {
   const [pseudo, setPseudo] = useState("");
   const [step, setStep] = useState<"code" | "pseudo">("code");
   const [error, setError] = useState("");
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-    const existing = getProgress();
-    if (existing?.classCode) {
-      router.replace("/dashboard");
-    }
+    apiGetMe().then((session) => {
+      if (session) {
+        router.replace("/dashboard");
+      } else {
+        setLoading(false);
+      }
+    });
   }, [router]);
 
-  if (!mounted) return null;
+  if (loading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-gradient-to-b from-blue-50 via-white to-blue-50">
+        <Mascot size="lg" message="Chargement..." />
+      </div>
+    );
+  }
 
   function handleCodeSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,11 +49,16 @@ export default function HomePage() {
     }
   }
 
-  function handlePseudoSubmit(e: React.FormEvent) {
+  async function handlePseudoSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
     const cleaned = code.trim().toUpperCase();
-    initProgress(cleaned, pseudo.trim() || "Explorateur");
-    router.push("/dashboard");
+    try {
+      await apiJoin(cleaned, pseudo.trim() || "Explorateur");
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur de connexion");
+    }
   }
 
   return (

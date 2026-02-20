@@ -6,28 +6,30 @@ import Mascot from "@/components/Mascot";
 import ModuleCard from "@/components/ModuleCard";
 import BottomNav from "@/components/BottomNav";
 import { modules } from "@/data/modules";
-import { getProgress, getModuleCompletion, reportProgressToClass } from "@/lib/store";
-import type { UserProgress } from "@/lib/store";
+import { apiGetMe, computeModuleCompletion } from "@/lib/api";
+import type { StudentSession, ProgressData } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [progress, setProgress] = useState<UserProgress | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [student, setStudent] = useState<StudentSession | null>(null);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-    const p = getProgress();
-    if (!p) {
-      router.replace("/");
-      return;
-    }
-    setProgress(p);
-    reportProgressToClass();
+    apiGetMe().then((session) => {
+      if (!session) {
+        router.replace("/");
+        return;
+      }
+      setStudent(session.student);
+      setProgress(session.progress);
+      setLoading(false);
+    });
   }, [router]);
 
-  if (!mounted || !progress) return null;
+  if (loading || !student || !progress) return null;
 
-  const pseudo = progress.pseudo || "Explorateur";
+  const pseudo = student.pseudo || "Explorateur";
   const totalBadges = progress.badges.length;
 
   const mascotMessages = [
@@ -85,7 +87,8 @@ export default function DashboardPage() {
               <ModuleCard
                 key={mod.id}
                 module={mod}
-                progress={getModuleCompletion(
+                progress={computeModuleCompletion(
+                  progress,
                   mod.id,
                   mod.fiches.length,
                   mod.activites.length
@@ -135,7 +138,7 @@ export default function DashboardPage() {
             <p className="text-[10px] text-blue-300 font-medium uppercase tracking-wider">
               Code Classe
             </p>
-            <p className="font-bold text-sm mt-0.5">{progress.classCode}</p>
+            <p className="font-bold text-sm mt-0.5">{student.classCode}</p>
           </div>
           <div className="text-2xl">📋</div>
         </div>
