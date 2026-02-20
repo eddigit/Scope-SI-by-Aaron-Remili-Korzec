@@ -1,0 +1,22 @@
+{
+  "name": "InfoScope — Sciences de l'Information",
+  "short_name": "InfoScope",
+  "description": "Application éducative pour apprendre à décrypter l'information",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#3B82F6",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
