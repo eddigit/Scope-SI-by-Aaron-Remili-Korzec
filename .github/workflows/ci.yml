@@ -1,6 +1,6 @@
 name: Scope SI CI
 
-on:
+"on":
   push:
     branches: [main, feature/infoscope-internal-api]
   pull_request:
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
 
       - name: Check for obvious secrets
@@ -39,7 +39,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: api/package-lock.json
 
