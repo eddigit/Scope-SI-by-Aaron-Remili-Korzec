@@ -44,6 +44,29 @@ test("internal write endpoints require the configured internal key", async () =>
   assert.equal(response.statusCode, 401);
 });
 
+test("public student start creates a pseudonymous student without internal key", async () => {
+  const app = createApp({
+    db: {
+      createUser: async (input) => ({ id: "student-1", ...input }),
+    },
+  });
+
+  const response = await request(app, "POST", "/api/public/students", {
+    pseudo: "Ada",
+    classCode: "DEMO-2026",
+  }, {
+    origin: "https://app.infosscope.com",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(JSON.parse(response.body), {
+    id: "student-1",
+    pseudo: "Ada",
+    classCode: "DEMO-2026",
+    role: "student",
+  });
+});
+
 test("POST /api/internal/users validates and persists a pseudo user", async () => {
   const calls = [];
   const app = createApp({
@@ -279,6 +302,80 @@ test("teacher invitations return a one-time token without storing it in plain te
     expiresAt: "2026-08-01T00:00:00.000Z",
     invitationToken: "one-time-token",
   });
+});
+
+test("teacher invitations can be generated as copyable links without email provider", async () => {
+  const calls = [];
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      createTeacherInvitation: async (input) => {
+        calls.push(input);
+        return {
+          id: "invite-copy",
+          schoolId: input.schoolId,
+          role: input.role,
+          expiresAt: "2026-08-01T00:00:00.000Z",
+          invitationToken: "copyable-token",
+        };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/teacher-invitations", {
+    schoolId: "college-freinet",
+    role: "teacher",
+    expiresInDays: 7,
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(calls, [{
+    schoolId: "college-freinet",
+    email: null,
+    role: "teacher",
+    expiresInDays: 7,
+  }]);
+  assert.deepEqual(JSON.parse(response.body), {
+    id: "invite-copy",
+    schoolId: "college-freinet",
+    role: "teacher",
+    expiresAt: "2026-08-01T00:00:00.000Z",
+    invitationToken: "copyable-token",
+  });
+});
+
+test("public teacher invitation requires server-side admin setup code", async () => {
+  const app = createApp({
+    env: { INFOSCOPE_ADMIN_SETUP_CODE: "admin-ok" },
+    db: {
+      createTeacherInvitation: async (input) => ({
+        id: "invite-public",
+        schoolId: input.schoolId,
+        role: input.role,
+        expiresAt: "2026-08-01T00:00:00.000Z",
+        invitationToken: "copyable-token",
+      }),
+    },
+  });
+
+  const denied = await request(app, "POST", "/api/public/teacher-invitations", {
+    adminCode: "wrong",
+    schoolId: "default",
+  }, {
+    origin: "https://app.infosscope.com",
+  });
+  assert.equal(denied.statusCode, 401);
+
+  const accepted = await request(app, "POST", "/api/public/teacher-invitations", {
+    adminCode: "admin-ok",
+    schoolId: "default",
+  }, {
+    origin: "https://app.infosscope.com",
+  });
+  assert.equal(accepted.statusCode, 201);
+  assert.equal(JSON.parse(accepted.body).invitationToken, "copyable-token");
 });
 
 test("teacher session creation accepts an invitation token and returns a server session", async () => {

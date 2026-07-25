@@ -69,7 +69,7 @@ export function createDb(pool) {
       const id = crypto.randomUUID();
       const invitationToken = crypto.randomBytes(32).toString("base64url");
       const tokenHash = hashSecret(invitationToken);
-      const emailHash = hashSecret(input.email.toLowerCase());
+      const emailHash = hashSecret(input.email ? input.email.toLowerCase() : `copyable:${id}`);
       const result = await pool.query(
         `insert into teacher_invitations (id, school_id, email_hash, token_hash, role, expires_at)
          values ($1, $2, $3, $4, $5, now() + ($6::int * interval '1 day'))

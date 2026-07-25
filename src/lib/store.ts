@@ -3,6 +3,9 @@
 export interface UserProgress {
   classCode: string;
   pseudo: string;
+  userId?: string;
+  syncEnabled?: boolean;
+  lastSyncAt?: string;
   modules: Record<string, ModuleProgress>;
   badges: string[];
 }
@@ -31,10 +34,12 @@ export function saveProgress(progress: UserProgress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
 }
 
-export function initProgress(classCode: string, pseudo: string): UserProgress {
+export function initProgress(classCode: string, pseudo: string, options: { userId?: string; syncEnabled?: boolean } = {}): UserProgress {
   const progress: UserProgress = {
     classCode,
     pseudo,
+    userId: options.userId,
+    syncEnabled: options.syncEnabled === true,
     modules: {},
     badges: [],
   };
@@ -89,6 +94,34 @@ export function getModuleCompletion(moduleId: string, totalFiches: number, total
 export function clearProgress() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
+}
+
+export async function createSyncedStudent(classCode: string, pseudo: string) {
+  const response = await fetch("/api/infoscope/student/start", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ classCode, pseudo }),
+  });
+  if (!response.ok) throw new Error("sync_start_failed");
+  return response.json() as Promise<{ id: string }>;
+}
+
+export async function syncProgressToServer() {
+  const progress = getProgress();
+  if (!progress?.syncEnabled || !progress.userId) return { skipped: true };
+  const response = await fetch(`/api/infoscope/users/${encodeURIComponent(progress.userId)}/progress/import`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      optIn: true,
+      modules: progress.modules,
+    }),
+  });
+  if (!response.ok) throw new Error("sync_progress_failed");
+  const result = await response.json();
+  progress.lastSyncAt = new Date().toISOString();
+  saveProgress(progress);
+  return result;
 }
 
 // Class-level aggregated data for teachers (stored per class code)

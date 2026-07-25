@@ -6,13 +6,14 @@ import Mascot from "@/components/Mascot";
 import ModuleCard from "@/components/ModuleCard";
 import BottomNav from "@/components/BottomNav";
 import { modules } from "@/data/modules";
-import { getProgress, getModuleCompletion, reportProgressToClass } from "@/lib/store";
+import { getProgress, getModuleCompletion, reportProgressToClass, syncProgressToServer } from "@/lib/store";
 import type { UserProgress } from "@/lib/store";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [syncState, setSyncState] = useState<"local" | "syncing" | "synced" | "failed">("local");
 
   useEffect(() => {
     setMounted(true);
@@ -23,6 +24,12 @@ export default function DashboardPage() {
     }
     setProgress(p);
     reportProgressToClass();
+    if (p.syncEnabled) {
+      setSyncState("syncing");
+      syncProgressToServer()
+        .then(() => setSyncState("synced"))
+        .catch(() => setSyncState("failed"));
+    }
   }, [router]);
 
   if (!mounted || !progress) return null;
@@ -139,6 +146,14 @@ export default function DashboardPage() {
           </div>
           <div className="text-2xl">📋</div>
         </div>
+
+        {progress.syncEnabled && (
+          <div className="mt-3 rounded-2xl bg-white p-3 text-center text-xs font-semibold text-[var(--color-text-secondary)] border border-gray-100">
+            {syncState === "syncing" && "Synchronisation en cours..."}
+            {syncState === "synced" && "Progression synchronisée avec la classe."}
+            {syncState === "failed" && "Synchronisation indisponible, progression conservée sur cet appareil."}
+          </div>
+        )}
       </main>
 
       <BottomNav />

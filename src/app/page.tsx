@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Mascot from "@/components/Mascot";
 import { VALID_CLASS_CODES, TEACHER_CODES } from "@/data/modules";
-import { getProgress, initProgress } from "@/lib/store";
+import { createSyncedStudent, getProgress, initProgress } from "@/lib/store";
 
 export default function HomePage() {
   const router = useRouter();
@@ -13,6 +13,8 @@ export default function HomePage() {
   const [step, setStep] = useState<"code" | "pseudo">("code");
   const [error, setError] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [syncOptIn, setSyncOptIn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -41,11 +43,24 @@ export default function HomePage() {
     }
   }
 
-  function handlePseudoSubmit(e: React.FormEvent) {
+  async function handlePseudoSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cleaned = code.trim().toUpperCase();
-    initProgress(cleaned, pseudo.trim() || "Explorateur");
-    router.push("/dashboard");
+    const displayPseudo = pseudo.trim() || "Explorateur";
+    setSubmitting(true);
+    setError("");
+    try {
+      if (syncOptIn) {
+        const user = await createSyncedStudent(cleaned, displayPseudo);
+        initProgress(cleaned, displayPseudo, { userId: user.id, syncEnabled: true });
+      } else {
+        initProgress(cleaned, displayPseudo);
+      }
+      router.push("/dashboard");
+    } catch {
+      setError("Synchronisation indisponible. Tu peux continuer sans l'activer.");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -140,11 +155,30 @@ export default function HomePage() {
                   maxLength={20}
                 />
 
+                <label className="mt-4 flex items-start gap-3 rounded-2xl bg-blue-50 p-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={syncOptIn}
+                    onChange={(e) => setSyncOptIn(e.target.checked)}
+                    className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
+                  />
+                  <span className="text-xs text-[var(--color-navy)]">
+                    Synchroniser ma progression avec la classe. C'est optionnel et ton pseudo reste libre.
+                  </span>
+                </label>
+
+                {error && (
+                  <p className="text-[var(--color-danger)] text-xs text-center mt-3 font-medium">
+                    {error}
+                  </p>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full mt-4 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-bold py-4 rounded-2xl text-base transition-all active:scale-[0.98] shadow-md shadow-blue-200"
+                  disabled={submitting}
+                  className="w-full mt-4 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-bold py-4 rounded-2xl text-base transition-all active:scale-[0.98] shadow-md shadow-blue-200 disabled:opacity-60"
                 >
-                  C'est parti ! 🚀
+                  {submitting ? "Connexion..." : "C'est parti ! 🚀"}
                 </button>
 
                 <button

@@ -13,17 +13,32 @@ function TeacherContent() {
   const [isTeacher, setIsTeacher] = useState(false);
   const [classCode, setClassCode] = useState("");
   const [classData, setClassData] = useState<Record<string, { modules: Record<string, { fichesRead: string[]; activitesCompleted: string[] }>; badges: string[] }> | null>(null);
+  const [summary, setSummary] = useState<{ studentCount: number; modules: { moduleId: string; startedCount: number; completedActivityCount: number }[] } | null>(null);
+  const [invitePseudo, setInvitePseudo] = useState("");
+  const [adminCode, setAdminCode] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [teacherError, setTeacherError] = useState("");
 
   useEffect(() => {
     setMounted(true);
 
+    const invite = searchParams.get("invite");
     const teacherCode = searchParams.get("teacher");
     const code = searchParams.get("code");
+
+    if (invite) {
+      setIsTeacher(false);
+      return;
+    }
 
     if (teacherCode && code && TEACHER_CODES[teacherCode] === code) {
       setIsTeacher(true);
       setClassCode(code);
       setClassData(getClassData(code));
+      fetch(`/api/infoscope/classes/${encodeURIComponent(code)}/summary`)
+        .then((response) => response.ok ? response.json() : null)
+        .then((data) => setSummary(data))
+        .catch(() => setSummary(null));
     } else {
       const p = getProgress();
       if (!p) {
@@ -35,6 +50,58 @@ function TeacherContent() {
   }, [router, searchParams]);
 
   if (!mounted) return null;
+
+  const invitationToken = searchParams.get("invite");
+  if (invitationToken) {
+    async function acceptInvitation(e: React.FormEvent) {
+      e.preventDefault();
+      setTeacherError("");
+      const response = await fetch("/api/infoscope/teacher/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ invitationToken, pseudo: invitePseudo || "Enseignant" }),
+      });
+      if (!response.ok) {
+        setTeacherError("Invitation invalide ou expirée.");
+        return;
+      }
+      setIsTeacher(true);
+      setClassCode("FREINET-6A");
+    }
+
+    if (isTeacher) {
+      return (
+        <div className="min-h-dvh bg-[var(--color-surface)] flex items-center justify-center px-5">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 w-full max-w-sm text-center">
+            <p className="text-3xl mb-2">🦉</p>
+            <h1 className="font-extrabold text-[var(--color-navy)]">Accès enseignant activé</h1>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-2">
+              Votre session est créée côté serveur. Ouvrez un code enseignant de classe pour consulter le suivi.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-dvh bg-[var(--color-surface)] flex items-center justify-center px-5">
+        <form onSubmit={acceptInvitation} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 w-full max-w-sm">
+          <p className="text-3xl mb-2 text-center">🦉</p>
+          <h1 className="font-extrabold text-[var(--color-navy)] text-center">Invitation enseignant</h1>
+          <input
+            value={invitePseudo}
+            onChange={(e) => setInvitePseudo(e.target.value)}
+            placeholder="Nom ou pseudo enseignant"
+            className="mt-5 w-full px-4 py-3 bg-[var(--color-surface)] border-2 border-gray-100 rounded-2xl text-center font-semibold focus:outline-none focus:border-[var(--color-primary)]"
+          />
+          {teacherError && <p className="text-xs text-[var(--color-danger)] text-center mt-3">{teacherError}</p>}
+          <button className="w-full mt-4 bg-[var(--color-primary)] text-white font-bold py-3 rounded-2xl">
+            Activer l'accès
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   // Student profile view
   if (!isTeacher) {
@@ -114,7 +181,29 @@ function TeacherContent() {
   }
 
   // Teacher dashboard
-  const studentCount = classData ? Object.keys(classData).length : 0;
+  const studentCount = summary?.studentCount ?? (classData ? Object.keys(classData).length : 0);
+
+  async function createInvitation(e: React.FormEvent) {
+    e.preventDefault();
+    setTeacherError("");
+    setInviteLink("");
+    const response = await fetch("/api/infoscope/teacher/invitations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        adminCode,
+        schoolId: "default",
+        role: "teacher",
+        expiresInDays: 7,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setTeacherError("Code admin invalide ou invitations désactivées.");
+      return;
+    }
+    setInviteLink(data.invitationLink);
+  }
 
   return (
     <div className="min-h-dvh bg-[var(--color-surface)] pb-8">
@@ -151,6 +240,7 @@ function TeacherContent() {
               let totalFiches = 0;
               let totalActivites = 0;
               let totalScores: number[] = [];
+              const serverModule = summary?.modules.find((item) => item.moduleId === mod.id);
 
               if (classData) {
                 Object.values(classData).forEach((student) => {
@@ -164,7 +254,9 @@ function TeacherContent() {
               }
 
               const avgFiches = studentCount > 0 ? (totalFiches / studentCount).toFixed(1) : "0";
-              const avgActivites = studentCount > 0 ? (totalActivites / studentCount).toFixed(1) : "0";
+              const avgActivites = serverModule
+                ? String(serverModule.completedActivityCount)
+                : studentCount > 0 ? (totalActivites / studentCount).toFixed(1) : "0";
 
               return (
                 <div key={mod.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
@@ -187,7 +279,7 @@ function TeacherContent() {
                     </div>
                     <div className="bg-[var(--color-surface)] rounded-xl p-3 text-center">
                       <p className="text-lg font-extrabold" style={{ color: mod.color }}>{avgActivites}</p>
-                      <p className="text-[10px] text-[var(--color-text-secondary)]">Activités moy.</p>
+                      <p className="text-[10px] text-[var(--color-text-secondary)]">{serverModule ? "Activités sync" : "Activités moy."}</p>
                     </div>
                   </div>
                 </div>
@@ -195,6 +287,26 @@ function TeacherContent() {
             })}
           </>
         )}
+
+        <form onSubmit={createInvitation} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <h2 className="text-sm font-bold text-[var(--color-navy)] mb-2">Inviter un enseignant</h2>
+          <input
+            value={adminCode}
+            onChange={(e) => setAdminCode(e.target.value)}
+            placeholder="Code admin"
+            className="w-full px-4 py-3 bg-[var(--color-surface)] border-2 border-gray-100 rounded-2xl text-sm focus:outline-none focus:border-[var(--color-primary)]"
+          />
+          {teacherError && <p className="text-xs text-[var(--color-danger)] mt-2">{teacherError}</p>}
+          <button className="w-full mt-3 bg-[var(--color-primary)] text-white font-bold py-3 rounded-2xl text-sm">
+            Générer un lien copiable
+          </button>
+          {inviteLink && (
+            <div className="mt-3 rounded-xl bg-blue-50 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-secondary)] font-bold">Lien invitation</p>
+              <p className="mt-1 break-all text-xs text-[var(--color-navy)]">{inviteLink}</p>
+            </div>
+          )}
+        </form>
       </main>
     </div>
   );

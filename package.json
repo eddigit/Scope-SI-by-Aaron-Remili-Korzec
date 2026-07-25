@@ -2,10 +2,12 @@
   "name": "infoscope",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Application web éducative — Sciences de l'Information pour collégiens",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --test src/**/*.test.mjs",
     "start": "next start",
     "lint": "next lint"
   },

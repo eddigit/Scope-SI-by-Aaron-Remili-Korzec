@@ -49,6 +49,11 @@ function requiredEmail(value) {
   return email;
 }
 
+function optionalEmail(value) {
+  if (value === undefined || value === null || value === "") return null;
+  return requiredEmail(value);
+}
+
 function optionalInteger(value, field, defaultValue, min, max) {
   if (value === undefined || value === null) return defaultValue;
   if (!Number.isInteger(value) || value < min || value > max) {
@@ -154,7 +159,7 @@ export function parseTeacherInvitationInput(body) {
   if (!new Set(["teacher", "admin"]).has(role)) throw new InputError("role is invalid");
   return {
     schoolId: requiredSafeId(input.schoolId, "schoolId"),
-    email: requiredEmail(input.email),
+    email: optionalEmail(input.email),
     role,
     expiresInDays: optionalInteger(input.expiresInDays, "expiresInDays", 7, 1, 30),
   };

@@ -44,6 +44,11 @@ function requireInternalKey(req, internalApiKey) {
   }
 }
 
+function requireAdminCode(inputCode, env) {
+  if (!env.INFOSCOPE_ADMIN_SETUP_CODE) throw new UnauthorizedError("teacher invitations disabled");
+  if (inputCode !== env.INFOSCOPE_ADMIN_SETUP_CODE) throw new UnauthorizedError("admin setup code invalid");
+}
+
 function routePath(url) {
   return new URL(url, "http://internal").pathname;
 }
@@ -130,7 +135,7 @@ export function createApp({
         return;
       }
 
-      if (path.startsWith("/api/internal/")) {
+      if (path.startsWith("/api/internal/") || path.startsWith("/api/public/")) {
         const rate = checkRateLimit(req);
         if (!rate.allowed) {
           send(res, 429, { error: "rate_limited" }, {
@@ -139,7 +144,57 @@ export function createApp({
           });
           return;
         }
+      }
+
+      if (path.startsWith("/api/internal/")) {
         requireInternalKey(req, internalApiKey);
+      }
+
+      if (req.method === "POST" && path === "/api/public/students") {
+        const body = await readJson(req);
+        send(res, 201, await db.createUser(parseUserInput({
+          pseudo: body.pseudo || "Explorateur",
+          classCode: body.classCode,
+          role: "student",
+        })), cors);
+        return;
+      }
+
+      const publicSummaryMatch = path.match(/^\/api\/public\/classes\/([^/]+)\/summary$/);
+      if (req.method === "GET" && publicSummaryMatch) {
+        send(res, 200, await db.getClassSummary(parseClassCode(publicSummaryMatch[1])), cors);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/public/teacher-invitations") {
+        const body = await readJson(req);
+        requireAdminCode(body.adminCode, env);
+        send(res, 201, await db.createTeacherInvitation(parseTeacherInvitationInput({
+          schoolId: body.schoolId || "default",
+          email: body.email || null,
+          role: body.role || "teacher",
+          expiresInDays: body.expiresInDays,
+        })), cors);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/public/teacher-sessions") {
+        send(res, 201, await db.acceptTeacherInvitation(parseTeacherSessionInput(await readJson(req))), cors);
+        return;
+      }
+
+      const publicProgressImportMatch = path.match(/^\/api\/public\/users\/([^/]+)\/progress\/import$/);
+      if (req.method === "POST" && publicProgressImportMatch) {
+        send(
+          res,
+          200,
+          await db.importLocalProgress(
+            publicProgressImportMatch[1],
+            parseLocalProgressImportInput(await readJson(req)),
+          ),
+          cors,
+        );
+        return;
       }
 
       if (req.method === "POST" && path === "/api/internal/classes") {
