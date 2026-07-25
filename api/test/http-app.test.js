@@ -391,3 +391,61 @@ test("localStorage progress import rejects missing opt-in", async () => {
 
   assert.equal(response.statusCode, 400);
 });
+
+test("class summary returns teacher-safe aggregate progress only", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      getClassSummary: async (classCode) => ({
+        classCode,
+        studentCount: 2,
+        modules: [
+          { moduleId: "opinion-vs-fait", startedCount: 2, completedActivityCount: 3 },
+        ],
+      }),
+    },
+  });
+
+  const response = await request(app, "GET", "/api/internal/classes/FREINET-6A/summary", undefined, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    classCode: "FREINET-6A",
+    studentCount: 2,
+    modules: [
+      { moduleId: "opinion-vs-fait", startedCount: 2, completedActivityCount: 3 },
+    ],
+  });
+});
+
+test("analytics overview is aggregate and non identifying", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      getAnalyticsOverview: async () => ({
+        organizations: 1,
+        schools: 1,
+        classes: 2,
+        studentUsers: 40,
+        teacherUsers: 3,
+        progressRows: 120,
+      }),
+    },
+  });
+
+  const response = await request(app, "GET", "/api/internal/analytics/overview", undefined, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    organizations: 1,
+    schools: 1,
+    classes: 2,
+    studentUsers: 40,
+    teacherUsers: 3,
+    progressRows: 120,
+  });
+});

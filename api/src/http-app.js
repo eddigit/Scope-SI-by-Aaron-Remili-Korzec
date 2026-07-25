@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { InputError, UnauthorizedError } from "./errors.js";
 import {
   parseClassInput,
+  parseClassCode,
   parseLocalProgressImportInput,
   parseProgressInput,
   parseTeacherInvitationInput,
@@ -143,6 +144,17 @@ export function createApp({
 
       if (req.method === "POST" && path === "/api/internal/classes") {
         send(res, 201, await db.createClass(parseClassInput(await readJson(req))), cors);
+        return;
+      }
+
+      const classSummaryMatch = path.match(/^\/api\/internal\/classes\/([^/]+)\/summary$/);
+      if (req.method === "GET" && classSummaryMatch) {
+        send(res, 200, await db.getClassSummary(parseClassCode(classSummaryMatch[1])), cors);
+        return;
+      }
+
+      if (req.method === "GET" && path === "/api/internal/analytics/overview") {
+        send(res, 200, await db.getAnalyticsOverview(), cors);
         return;
       }
 

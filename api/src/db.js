@@ -186,6 +186,58 @@ export function createDb(pool) {
       }
       return { importedModules, skippedModules };
     },
+
+    async getClassSummary(classCode) {
+      const studentCount = await pool.query(
+        `select count(*)::int as count
+         from users
+         where class_code = $1
+           and role = 'student'`,
+        [classCode],
+      );
+      const modules = await pool.query(
+        `select progress.module_id,
+                count(distinct progress.user_id)::int as started_count,
+                coalesce(sum(jsonb_array_length(progress.activites_completed)), 0)::int as completed_activity_count
+         from progress
+         join users on users.id = progress.user_id
+         where users.class_code = $1
+           and users.role = 'student'
+         group by progress.module_id
+         order by progress.module_id`,
+        [classCode],
+      );
+      return {
+        classCode,
+        studentCount: studentCount.rows[0]?.count ?? 0,
+        modules: modules.rows.map((row) => ({
+          moduleId: row.module_id,
+          startedCount: row.started_count,
+          completedActivityCount: row.completed_activity_count,
+        })),
+      };
+    },
+
+    async getAnalyticsOverview() {
+      const result = await pool.query(
+        `select
+           (select count(*)::int from organizations) as organizations,
+           (select count(*)::int from schools) as schools,
+           (select count(*)::int from classes) as classes,
+           (select count(*)::int from users where role = 'student') as student_users,
+           (select count(*)::int from users where role in ('teacher', 'admin')) as teacher_users,
+           (select count(*)::int from progress) as progress_rows`,
+      );
+      const row = result.rows[0] || {};
+      return {
+        organizations: row.organizations ?? 0,
+        schools: row.schools ?? 0,
+        classes: row.classes ?? 0,
+        studentUsers: row.student_users ?? 0,
+        teacherUsers: row.teacher_users ?? 0,
+        progressRows: row.progress_rows ?? 0,
+      };
+    },
   };
 }
 
