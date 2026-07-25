@@ -78,3 +78,73 @@ test("POST /api/internal/users validates and persists a pseudo user", async () =
   });
 });
 
+test("CORS allows only configured origins and handles preflight", async () => {
+  const app = createApp({
+    allowedOrigins: ["https://app.infosscope.com"],
+    db: {
+      health: async () => ({ ok: true, migrations: 1 }),
+    },
+  });
+
+  const allowed = await request(app, "OPTIONS", "/api/internal/users", undefined, {
+    origin: "https://app.infosscope.com",
+    "access-control-request-method": "POST",
+  });
+  assert.equal(allowed.statusCode, 204);
+  assert.equal(allowed.headers["access-control-allow-origin"], "https://app.infosscope.com");
+  assert.match(allowed.headers["access-control-allow-headers"], /x-infoscope-internal-key/);
+
+  const denied = await request(app, "OPTIONS", "/api/internal/users", undefined, {
+    origin: "https://evil.example",
+    "access-control-request-method": "POST",
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(denied.headers["access-control-allow-origin"], undefined);
+});
+
+test("responses include CORS headers only for allowed origins", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    allowedOrigins: ["https://app.infosscope.com"],
+    db: {
+      health: async () => ({ ok: true, migrations: 1 }),
+    },
+  });
+
+  const response = await request(app, "GET", "/api/health", undefined, {
+    origin: "https://app.infosscope.com",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["access-control-allow-origin"], "https://app.infosscope.com");
+  assert.equal(response.headers.vary, "Origin");
+
+  const unauthorized = await request(app, "POST", "/api/internal/users", {}, {
+    origin: "https://app.infosscope.com",
+  });
+  assert.equal(unauthorized.statusCode, 401);
+  assert.equal(unauthorized.headers["access-control-allow-origin"], "https://app.infosscope.com");
+});
+
+test("rate limiting rejects repeated internal requests from the same client", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    rateLimit: { windowMs: 60_000, maxRequests: 1 },
+    db: {
+      createClass: async () => ({ code: "FREINET-6A", label: null }),
+    },
+  });
+
+  const first = await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, {
+    "x-infoscope-internal-key": "secret-key",
+    "x-forwarded-for": "203.0.113.10",
+  });
+  assert.equal(first.statusCode, 201);
+
+  const second = await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, {
+    "x-infoscope-internal-key": "secret-key",
+    "x-forwarded-for": "203.0.113.10",
+  });
+  assert.equal(second.statusCode, 429);
+  assert.deepEqual(JSON.parse(second.body), { error: "rate_limited" });
+});

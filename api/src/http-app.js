@@ -4,6 +4,7 @@ import { InputError, UnauthorizedError } from "./errors.js";
 import { parseClassInput, parseProgressInput, parseUserInput } from "./validation.js";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const DEFAULT_RATE_LIMIT = { windowMs: 60_000, maxRequests: 120 };
 
 async function readJson(req) {
   const chunks = [];
@@ -18,9 +19,14 @@ async function readJson(req) {
   }
 }
 
-function send(res, statusCode, body) {
-  res.writeHead(statusCode, JSON_HEADERS);
+function send(res, statusCode, body, headers = {}) {
+  res.writeHead(statusCode, { ...JSON_HEADERS, ...headers });
   res.end(JSON.stringify(body));
+}
+
+function sendEmpty(res, statusCode, headers = {}) {
+  res.writeHead(statusCode, headers);
+  res.end();
 }
 
 function requireInternalKey(req, internalApiKey) {
@@ -34,12 +40,69 @@ function routePath(url) {
   return new URL(url, "http://internal").pathname;
 }
 
-export function createApp({ db, internalApiKey = process.env.INFOSCOPE_INTERNAL_API_KEY } = {}) {
+function corsHeaders(req, allowedOrigins) {
+  const origin = req.headers.origin;
+  if (!origin || !allowedOrigins.includes(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET,POST,PUT,OPTIONS",
+    "access-control-allow-headers": "content-type,x-infoscope-internal-key",
+    "vary": "Origin",
+  };
+}
+
+function clientKey(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress || "local";
+}
+
+function createRateLimiter({ windowMs, maxRequests } = DEFAULT_RATE_LIMIT) {
+  const buckets = new Map();
+  return function checkRateLimit(req) {
+    const now = Date.now();
+    const key = clientKey(req);
+    const current = buckets.get(key);
+    if (!current || current.resetAt <= now) {
+      buckets.set(key, { count: 1, resetAt: now + windowMs });
+      return { allowed: true };
+    }
+    current.count += 1;
+    if (current.count > maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil((current.resetAt - now) / 1000) };
+    }
+    return { allowed: true };
+  };
+}
+
+export function createApp({
+  db,
+  internalApiKey = process.env.INFOSCOPE_INTERNAL_API_KEY,
+  allowedOrigins = (process.env.INFOSCOPE_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  rateLimit = DEFAULT_RATE_LIMIT,
+} = {}) {
   if (!db) throw new Error("db adapter is required");
+  const checkRateLimit = createRateLimiter(rateLimit);
 
   async function handler(req, res) {
+    let cors = {};
     try {
       const path = routePath(req.url);
+      cors = corsHeaders(req, allowedOrigins);
+
+      if (req.method === "OPTIONS") {
+        if (!req.headers.origin || Object.keys(cors).length === 0) {
+          send(res, 403, { error: "origin_not_allowed" });
+          return;
+        }
+        sendEmpty(res, 204, cors);
+        return;
+      }
 
       if (req.method === "GET" && path === "/api/health") {
         const health = await db.health();
@@ -47,42 +110,50 @@ export function createApp({ db, internalApiKey = process.env.INFOSCOPE_INTERNAL_
           status: health.ok ? "ok" : "degraded",
           database: health.ok ? "ok" : "unavailable",
           migrations: health.migrations ?? 0,
-        });
+        }, cors);
         return;
       }
 
       if (path.startsWith("/api/internal/")) {
+        const rate = checkRateLimit(req);
+        if (!rate.allowed) {
+          send(res, 429, { error: "rate_limited" }, {
+            ...cors,
+            "retry-after": String(rate.retryAfter),
+          });
+          return;
+        }
         requireInternalKey(req, internalApiKey);
       }
 
       if (req.method === "POST" && path === "/api/internal/classes") {
-        send(res, 201, await db.createClass(parseClassInput(await readJson(req))));
+        send(res, 201, await db.createClass(parseClassInput(await readJson(req))), cors);
         return;
       }
 
       if (req.method === "POST" && path === "/api/internal/users") {
-        send(res, 201, await db.createUser(parseUserInput(await readJson(req))));
+        send(res, 201, await db.createUser(parseUserInput(await readJson(req))), cors);
         return;
       }
 
       const progressMatch = path.match(/^\/api\/internal\/users\/([^/]+)\/progress(?:\/([^/]+))?$/);
       if (req.method === "GET" && progressMatch && !progressMatch[2]) {
-        send(res, 200, { progress: await db.getUserProgress(progressMatch[1]) });
+        send(res, 200, { progress: await db.getUserProgress(progressMatch[1]) }, cors);
         return;
       }
 
       if (req.method === "PUT" && progressMatch && progressMatch[2]) {
         const payload = parseProgressInput({ ...(await readJson(req)), moduleId: progressMatch[2] });
-        send(res, 200, await db.upsertProgress(progressMatch[1], payload));
+        send(res, 200, await db.upsertProgress(progressMatch[1], payload), cors);
         return;
       }
 
-      send(res, 404, { error: "not_found" });
+      send(res, 404, { error: "not_found" }, cors);
     } catch (error) {
       const statusCode = error.statusCode || 500;
       send(res, statusCode, {
         error: statusCode >= 500 ? "internal_error" : error.message,
-      });
+      }, cors);
     }
   }
 
@@ -100,17 +171,18 @@ export function createApp({ db, internalApiKey = process.env.INFOSCOPE_INTERNAL_
       };
       let statusCode = 0;
       let responseBody = "";
+      let responseHeaders = {};
       const res = {
-        writeHead(code) {
+        writeHead(code, headers = {}) {
           statusCode = code;
+          responseHeaders = headers;
         },
         end(payload) {
-          responseBody = payload;
+          responseBody = payload ?? "";
         },
       };
       await handler(req, res);
-      return { statusCode, body: responseBody };
+      return { statusCode, headers: responseHeaders, body: responseBody };
     },
   };
 }
-
