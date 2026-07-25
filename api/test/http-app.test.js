@@ -78,6 +78,74 @@ test("POST /api/internal/users validates and persists a pseudo user", async () =
   });
 });
 
+test("POST /api/internal/classes accepts tenant and school context", async () => {
+  const calls = [];
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      createClass: async (input) => {
+        calls.push(input);
+        return { code: input.code, label: input.label, organizationId: input.organizationId, schoolId: input.schoolId };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/classes", {
+    code: "FREINET-6A",
+    label: "6e A",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(calls, [{
+    code: "FREINET-6A",
+    label: "6e A",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  }]);
+  assert.deepEqual(JSON.parse(response.body), {
+    code: "FREINET-6A",
+    label: "6e A",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  });
+});
+
+test("POST /api/internal/users accepts admin role and school context", async () => {
+  const calls = [];
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      createUser: async (input) => {
+        calls.push(input);
+        return { id: "user-admin", ...input };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/users", {
+    pseudo: "Admin pilote",
+    classCode: "FREINET-6A",
+    role: "admin",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(calls, [{
+    pseudo: "Admin pilote",
+    classCode: "FREINET-6A",
+    role: "admin",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  }]);
+});
+
 test("CORS allows only configured origins and handles preflight", async () => {
   const app = createApp({
     allowedOrigins: ["https://app.infosscope.com"],
@@ -147,4 +215,25 @@ test("rate limiting rejects repeated internal requests from the same client", as
   });
   assert.equal(second.statusCode, 429);
   assert.deepEqual(JSON.parse(second.body), { error: "rate_limited" });
+});
+
+test("rate limiting can be configured from environment", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    env: {
+      INFOSCOPE_RATE_LIMIT_WINDOW_MS: "60000",
+      INFOSCOPE_RATE_LIMIT_MAX_REQUESTS: "1",
+    },
+    db: {
+      createClass: async () => ({ code: "FREINET-6A", label: null }),
+    },
+  });
+
+  const headers = {
+    "x-infoscope-internal-key": "secret-key",
+    "x-forwarded-for": "203.0.113.11",
+  };
+
+  assert.equal((await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, headers)).statusCode, 201);
+  assert.equal((await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, headers)).statusCode, 429);
 });

@@ -19,11 +19,27 @@ test("parseUserInput accepts a trimmed pseudo, class code, and known role", () =
   });
 });
 
+test("parseUserInput accepts tenant context and admin role", () => {
+  assert.deepEqual(parseUserInput({
+    pseudo: "Admin pilote",
+    classCode: "freinet-6a",
+    role: "admin",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  }), {
+    pseudo: "Admin pilote",
+    classCode: "FREINET-6A",
+    role: "admin",
+    organizationId: "org-freinet",
+    schoolId: "college-freinet",
+  });
+});
+
 test("parseUserInput rejects unknown roles", () => {
   assert.throws(() => parseUserInput({
     pseudo: "Aaron",
     classCode: "FREINET-6A",
-    role: "admin",
+    role: "owner",
   }), /role/);
 });
 
@@ -44,4 +60,3 @@ test("parseProgressInput accepts minimal module progress payloads", () => {
     scores: { "quiz-fait-ou-opinion": 8 },
   });
 });
-

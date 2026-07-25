@@ -77,14 +77,22 @@ function createRateLimiter({ windowMs, maxRequests } = DEFAULT_RATE_LIMIT) {
   };
 }
 
+function rateLimitFromEnv(env) {
+  return {
+    windowMs: Number(env.INFOSCOPE_RATE_LIMIT_WINDOW_MS || DEFAULT_RATE_LIMIT.windowMs),
+    maxRequests: Number(env.INFOSCOPE_RATE_LIMIT_MAX_REQUESTS || DEFAULT_RATE_LIMIT.maxRequests),
+  };
+}
+
 export function createApp({
   db,
-  internalApiKey = process.env.INFOSCOPE_INTERNAL_API_KEY,
-  allowedOrigins = (process.env.INFOSCOPE_ALLOWED_ORIGINS || "")
+  env = process.env,
+  internalApiKey = env.INFOSCOPE_INTERNAL_API_KEY,
+  allowedOrigins = (env.INFOSCOPE_ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
-  rateLimit = DEFAULT_RATE_LIMIT,
+  rateLimit = rateLimitFromEnv(env),
 } = {}) {
   if (!db) throw new Error("db adapter is required");
   const checkRateLimit = createRateLimiter(rateLimit);

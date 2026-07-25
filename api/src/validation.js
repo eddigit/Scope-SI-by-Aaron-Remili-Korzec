@@ -2,7 +2,7 @@ import { InputError } from "./errors.js";
 
 const CLASS_CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{2,31}$/;
 const SAFE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,79}$/;
-const ROLES = new Set(["student", "teacher"]);
+const ROLES = new Set(["student", "teacher", "admin"]);
 
 function requireObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -28,6 +28,13 @@ function requiredText(value, field, minLength, maxLength) {
   return trimmed;
 }
 
+function optionalSafeId(value, field) {
+  const id = optionalText(value, field, 80);
+  if (id === null) return null;
+  if (!SAFE_ID_PATTERN.test(id)) throw new InputError(`${field} format is invalid`);
+  return id;
+}
+
 export function parseClassCode(value) {
   const code = requiredText(value, "class code", 3, 32).toUpperCase();
   if (!CLASS_CODE_PATTERN.test(code)) {
@@ -38,21 +45,31 @@ export function parseClassCode(value) {
 
 export function parseClassInput(body) {
   const input = requireObject(body);
-  return {
+  const parsed = {
     code: parseClassCode(input.code),
     label: optionalText(input.label, "label"),
   };
+  const organizationId = optionalSafeId(input.organizationId, "organizationId");
+  const schoolId = optionalSafeId(input.schoolId, "schoolId");
+  if (organizationId) parsed.organizationId = organizationId;
+  if (schoolId) parsed.schoolId = schoolId;
+  return parsed;
 }
 
 export function parseUserInput(body) {
   const input = requireObject(body);
   const role = requiredText(input.role, "role", 3, 20);
   if (!ROLES.has(role)) throw new InputError("role is invalid");
-  return {
+  const parsed = {
     pseudo: requiredText(input.pseudo, "pseudo", 2, 40),
     classCode: parseClassCode(input.classCode),
     role,
   };
+  const organizationId = optionalSafeId(input.organizationId, "organizationId");
+  const schoolId = optionalSafeId(input.schoolId, "schoolId");
+  if (organizationId) parsed.organizationId = organizationId;
+  if (schoolId) parsed.schoolId = schoolId;
+  return parsed;
 }
 
 function parseIdArray(value, field) {
@@ -92,4 +109,3 @@ export function parseProgressInput(body) {
     scores: parseScores(input.scores),
   };
 }
-
