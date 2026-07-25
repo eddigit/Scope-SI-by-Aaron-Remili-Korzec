@@ -166,6 +166,14 @@ export function createApp({
         return;
       }
 
+      const publicExportMatch = path.match(/^\/api\/public\/classes\/([^/]+)\/export$/);
+      if (req.method === "POST" && publicExportMatch) {
+        const body = await readJson(req);
+        requireAdminCode(body.adminCode, env);
+        send(res, 200, await db.exportClassData(parseClassCode(publicExportMatch[1])), cors);
+        return;
+      }
+
       if (req.method === "POST" && path === "/api/public/teacher-invitations") {
         const body = await readJson(req);
         requireAdminCode(body.adminCode, env);
@@ -194,6 +202,21 @@ export function createApp({
           ),
           cors,
         );
+        return;
+      }
+
+      const publicUserDeleteMatch = path.match(/^\/api\/public\/users\/([^/]+)\/delete$/);
+      if (req.method === "POST" && publicUserDeleteMatch) {
+        const body = await readJson(req);
+        requireAdminCode(body.adminCode, env);
+        send(res, 200, await db.deleteUserData(publicUserDeleteMatch[1]), cors);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/public/retention/purge-expired-access") {
+        const body = await readJson(req);
+        requireAdminCode(body.adminCode, env);
+        send(res, 200, await db.purgeExpiredAccess(), cors);
         return;
       }
 

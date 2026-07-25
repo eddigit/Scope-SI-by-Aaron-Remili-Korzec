@@ -238,6 +238,82 @@ export function createDb(pool) {
         progressRows: row.progress_rows ?? 0,
       };
     },
+
+    async exportClassData(classCode) {
+      const users = await pool.query(
+        `select id, pseudo, role, organization_id, school_id, created_at, updated_at
+         from users
+         where class_code = $1
+           and role = 'student'
+         order by created_at, id`,
+        [classCode],
+      );
+      const progress = await pool.query(
+        `select progress.user_id,
+                progress.module_id,
+                progress.fiches_read,
+                progress.activites_completed,
+                progress.scores,
+                progress.updated_at
+         from progress
+         join users on users.id = progress.user_id
+         where users.class_code = $1
+           and users.role = 'student'
+         order by progress.user_id, progress.module_id`,
+        [classCode],
+      );
+      const progressByUser = new Map();
+      for (const row of progress.rows) {
+        if (!progressByUser.has(row.user_id)) progressByUser.set(row.user_id, []);
+        progressByUser.get(row.user_id).push(mapProgress(row));
+      }
+      return {
+        classCode,
+        exportedAt: new Date().toISOString(),
+        students: users.rows.map((row) => ({
+          id: row.id,
+          pseudo: row.pseudo,
+          role: row.role,
+          organizationId: row.organization_id,
+          schoolId: row.school_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          progress: progressByUser.get(row.id) || [],
+        })),
+      };
+    },
+
+    async deleteUserData(userId) {
+      const result = await pool.query(
+        `delete from users
+         where id = $1
+           and role = 'student'
+         returning id`,
+        [userId],
+      );
+      return {
+        userId,
+        deleted: result.rowCount > 0,
+      };
+    },
+
+    async purgeExpiredAccess() {
+      const invitations = await pool.query(
+        `update teacher_invitations
+         set revoked_at = coalesce(revoked_at, now())
+         where expires_at <= now()
+           and accepted_at is null
+           and revoked_at is null`,
+      );
+      const sessions = await pool.query(
+        `delete from auth_sessions
+         where expires_at <= now()`,
+      );
+      return {
+        expiredInvitationsRevoked: invitations.rowCount,
+        expiredSessionsDeleted: sessions.rowCount,
+      };
+    },
   };
 }
 

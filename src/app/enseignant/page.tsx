@@ -18,6 +18,9 @@ function TeacherContent() {
   const [adminCode, setAdminCode] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [teacherError, setTeacherError] = useState("");
+  const [deleteUserId, setDeleteUserId] = useState("");
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [exportText, setExportText] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -205,6 +208,60 @@ function TeacherContent() {
     setInviteLink(data.invitationLink);
   }
 
+  async function exportClassData() {
+    setTeacherError("");
+    setMaintenanceMessage("");
+    setExportText("");
+    const response = await fetch(`/api/infoscope/classes/${encodeURIComponent(classCode)}/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminCode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setTeacherError("Code admin invalide ou export indisponible.");
+      return;
+    }
+    setExportText(JSON.stringify(data, null, 2));
+    setMaintenanceMessage("Export classe généré côté serveur.");
+  }
+
+  async function deleteStudentData(e: React.FormEvent) {
+    e.preventDefault();
+    setTeacherError("");
+    setMaintenanceMessage("");
+    const response = await fetch(`/api/infoscope/users/${encodeURIComponent(deleteUserId)}/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminCode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setTeacherError("Code admin invalide ou suppression indisponible.");
+      return;
+    }
+    setMaintenanceMessage(data.deleted ? "Données élève supprimées." : "Aucun élève supprimé pour cet identifiant.");
+    setDeleteUserId("");
+  }
+
+  async function purgeExpiredAccess() {
+    setTeacherError("");
+    setMaintenanceMessage("");
+    const response = await fetch("/api/infoscope/retention/purge-expired-access", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminCode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setTeacherError("Code admin invalide ou purge indisponible.");
+      return;
+    }
+    setMaintenanceMessage(
+      `${data.expiredInvitationsRevoked ?? 0} invitation(s) expirée(s) révoquée(s), ${data.expiredSessionsDeleted ?? 0} session(s) expirée(s) supprimée(s).`,
+    );
+  }
+
   return (
     <div className="min-h-dvh bg-[var(--color-surface)] pb-8">
       <header className="bg-gradient-to-b from-[var(--color-navy)] to-slate-700 text-white px-5 pt-10 pb-8 rounded-b-[2rem]">
@@ -307,6 +364,44 @@ function TeacherContent() {
             </div>
           )}
         </form>
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <h2 className="text-sm font-bold text-[var(--color-navy)] mb-2">Données et rétention</h2>
+          <p className="text-xs text-[var(--color-text-secondary)] mb-3">
+            Actions réservées au pilote : export, suppression d'un élève pseudonyme et purge des accès expirés.
+          </p>
+          <button
+            type="button"
+            onClick={exportClassData}
+            className="w-full bg-[var(--color-secondary)] text-white font-bold py-3 rounded-2xl text-sm"
+          >
+            Exporter la classe
+          </button>
+          <form onSubmit={deleteStudentData} className="mt-3 flex gap-2">
+            <input
+              value={deleteUserId}
+              onChange={(e) => setDeleteUserId(e.target.value)}
+              placeholder="ID élève à supprimer"
+              className="min-w-0 flex-1 px-4 py-3 bg-[var(--color-surface)] border-2 border-gray-100 rounded-2xl text-sm focus:outline-none focus:border-[var(--color-primary)]"
+            />
+            <button className="px-4 bg-red-500 text-white font-bold rounded-2xl text-sm">
+              Supprimer
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={purgeExpiredAccess}
+            className="w-full mt-3 border-2 border-gray-200 text-[var(--color-navy)] font-bold py-3 rounded-2xl text-sm"
+          >
+            Purger les accès expirés
+          </button>
+          {maintenanceMessage && <p className="mt-3 text-xs text-[var(--color-navy)] font-semibold">{maintenanceMessage}</p>}
+          {exportText && (
+            <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] text-slate-100 whitespace-pre-wrap">
+              {exportText}
+            </pre>
+          )}
+        </div>
       </main>
     </div>
   );

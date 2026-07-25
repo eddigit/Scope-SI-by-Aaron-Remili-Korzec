@@ -546,3 +546,82 @@ test("analytics overview is aggregate and non identifying", async () => {
     progressRows: 120,
   });
 });
+
+test("admin export returns a class dataset only with the setup code", async () => {
+  const calls = [];
+  const app = createApp({
+    env: { INFOSCOPE_ADMIN_SETUP_CODE: "admin-ok" },
+    db: {
+      exportClassData: async (classCode) => {
+        calls.push(classCode);
+        return {
+          classCode,
+          exportedAt: "2026-07-25T00:00:00.000Z",
+          students: [
+            {
+              id: "student-1",
+              pseudo: "Ada",
+              role: "student",
+              progress: [{ moduleId: "opinion-vs-fait", fichesRead: [], activitesCompleted: [], scores: {} }],
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const denied = await request(app, "POST", "/api/public/classes/FREINET-6A/export", {
+    adminCode: "wrong",
+  });
+  assert.equal(denied.statusCode, 401);
+
+  const accepted = await request(app, "POST", "/api/public/classes/FREINET-6A/export", {
+    adminCode: "admin-ok",
+  });
+  assert.equal(accepted.statusCode, 200);
+  assert.deepEqual(calls, ["FREINET-6A"]);
+  assert.equal(JSON.parse(accepted.body).students[0].pseudo, "Ada");
+});
+
+test("admin deletion removes a pseudonymous student and cascaded progress", async () => {
+  const calls = [];
+  const app = createApp({
+    env: { INFOSCOPE_ADMIN_SETUP_CODE: "admin-ok" },
+    db: {
+      deleteUserData: async (userId) => {
+        calls.push(userId);
+        return { userId, deleted: true };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/public/users/student-1/delete", {
+    adminCode: "admin-ok",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(calls, ["student-1"]);
+  assert.deepEqual(JSON.parse(response.body), { userId: "student-1", deleted: true });
+});
+
+test("admin retention purge removes only expired access artifacts", async () => {
+  const app = createApp({
+    env: { INFOSCOPE_ADMIN_SETUP_CODE: "admin-ok" },
+    db: {
+      purgeExpiredAccess: async () => ({
+        expiredInvitationsRevoked: 2,
+        expiredSessionsDeleted: 3,
+      }),
+    },
+  });
+
+  const response = await request(app, "POST", "/api/public/retention/purge-expired-access", {
+    adminCode: "admin-ok",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    expiredInvitationsRevoked: 2,
+    expiredSessionsDeleted: 3,
+  });
+});
