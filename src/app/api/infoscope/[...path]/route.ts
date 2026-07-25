@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  assertAdminCode,
   buildInvitationLink,
   internalApiUrl,
   publicApiBase,
@@ -81,11 +80,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const classExport = path.match(/^classes\/([^/]+)\/export$/);
   if (classExport) {
-    try {
-      assertAdminCode(body.adminCode);
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "unauthorized" }, { status: 401 });
-    }
     return callBackend(`/api/public/classes/${encodeURIComponent(classExport[1])}/export`, {
       method: "POST",
       body: JSON.stringify({ adminCode: body.adminCode }),
@@ -94,11 +88,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const userDelete = path.match(/^users\/([^/]+)\/delete$/);
   if (userDelete) {
-    try {
-      assertAdminCode(body.adminCode);
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "unauthorized" }, { status: 401 });
-    }
     return callBackend(`/api/public/users/${encodeURIComponent(userDelete[1])}/delete`, {
       method: "POST",
       body: JSON.stringify({ adminCode: body.adminCode }),
@@ -106,11 +95,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   if (path === "retention/purge-expired-access") {
-    try {
-      assertAdminCode(body.adminCode);
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "unauthorized" }, { status: 401 });
-    }
     return callBackend("/api/public/retention/purge-expired-access", {
       method: "POST",
       body: JSON.stringify({ adminCode: body.adminCode }),
@@ -118,12 +102,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   if (path === "teacher/invitations") {
-    try {
-      assertAdminCode(body.adminCode);
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "unauthorized" }, { status: 401 });
-    }
-
     const response = await callBackend("/api/public/teacher-invitations", {
       method: "POST",
       body: JSON.stringify({
