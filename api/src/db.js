@@ -241,7 +241,7 @@ export function createDb(pool) {
 
     async exportClassData(classCode) {
       const users = await pool.query(
-        `select id, pseudo, role, organization_id, school_id, created_at, updated_at
+        `select id, pseudo, role, organization_id, school_id, created_at
          from users
          where class_code = $1
            and role = 'student'
@@ -277,7 +277,6 @@ export function createDb(pool) {
           organizationId: row.organization_id,
           schoolId: row.school_id,
           createdAt: row.created_at,
-          updatedAt: row.updated_at,
           progress: progressByUser.get(row.id) || [],
         })),
       };
