@@ -172,6 +172,20 @@ export function createDb(pool) {
       );
       return mapProgress(result.rows[0]);
     },
+
+    async importLocalProgress(userId, input) {
+      const importedModules = [];
+      const skippedModules = [];
+      for (const progress of Object.values(input.modules)) {
+        try {
+          await this.upsertProgress(userId, progress);
+          importedModules.push(progress.moduleId);
+        } catch {
+          skippedModules.push(progress.moduleId);
+        }
+      }
+      return { importedModules, skippedModules };
+    },
   };
 }
 

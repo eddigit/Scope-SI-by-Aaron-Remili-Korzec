@@ -323,3 +323,71 @@ test("teacher session creation accepts an invitation token and returns a server 
     },
   });
 });
+
+test("localStorage progress import is explicit and non destructive", async () => {
+  const calls = [];
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      importLocalProgress: async (userId, input) => {
+        calls.push({ userId, input });
+        return { importedModules: ["opinion-vs-fait"], skippedModules: [] };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/users/user-1/progress/import", {
+    source: "localStorage",
+    optIn: true,
+    modules: {
+      "opinion-vs-fait": {
+        fichesRead: ["quest-ce-quun-fait"],
+        activitesCompleted: ["quiz-fait-ou-opinion"],
+        scores: { "quiz-fait-ou-opinion": 80 },
+      },
+    },
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(calls, [{
+    userId: "user-1",
+    input: {
+      source: "localStorage",
+      optIn: true,
+      modules: {
+        "opinion-vs-fait": {
+          moduleId: "opinion-vs-fait",
+          fichesRead: ["quest-ce-quun-fait"],
+          activitesCompleted: ["quiz-fait-ou-opinion"],
+          scores: { "quiz-fait-ou-opinion": 80 },
+        },
+      },
+    },
+  }]);
+  assert.deepEqual(JSON.parse(response.body), {
+    importedModules: ["opinion-vs-fait"],
+    skippedModules: [],
+  });
+});
+
+test("localStorage progress import rejects missing opt-in", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      importLocalProgress: async () => {
+        throw new Error("should not import without opt-in");
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/users/user-1/progress/import", {
+    source: "localStorage",
+    modules: {},
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 400);
+});

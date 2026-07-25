@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { InputError, UnauthorizedError } from "./errors.js";
 import {
   parseClassInput,
+  parseLocalProgressImportInput,
   parseProgressInput,
   parseTeacherInvitationInput,
   parseTeacherSessionInput,
@@ -157,6 +158,20 @@ export function createApp({
 
       if (req.method === "POST" && path === "/api/internal/teacher-sessions") {
         send(res, 201, await db.acceptTeacherInvitation(parseTeacherSessionInput(await readJson(req))), cors);
+        return;
+      }
+
+      const progressImportMatch = path.match(/^\/api\/internal\/users\/([^/]+)\/progress\/import$/);
+      if (req.method === "POST" && progressImportMatch) {
+        send(
+          res,
+          200,
+          await db.importLocalProgress(
+            progressImportMatch[1],
+            parseLocalProgressImportInput(await readJson(req)),
+          ),
+          cors,
+        );
         return;
       }
 

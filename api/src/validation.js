@@ -132,6 +132,22 @@ export function parseProgressInput(body) {
   };
 }
 
+export function parseLocalProgressImportInput(body) {
+  const input = requireObject(body);
+  if (input.source !== "localStorage") throw new InputError("source is invalid");
+  if (input.optIn !== true) throw new InputError("optIn is required");
+  const modules = requireObject(input.modules);
+  const parsedModules = {};
+  for (const [moduleId, progress] of Object.entries(modules)) {
+    parsedModules[moduleId] = parseProgressInput({ ...progress, moduleId });
+  }
+  return {
+    source: "localStorage",
+    optIn: true,
+    modules: parsedModules,
+  };
+}
+
 export function parseTeacherInvitationInput(body) {
   const input = requireObject(body);
   const role = requiredText(input.role, "role", 3, 20);
