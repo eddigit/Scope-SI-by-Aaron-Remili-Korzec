@@ -35,6 +35,28 @@ function optionalSafeId(value, field) {
   return id;
 }
 
+function requiredSafeId(value, field) {
+  const id = requiredText(value, field, 2, 80);
+  if (!SAFE_ID_PATTERN.test(id)) throw new InputError(`${field} format is invalid`);
+  return id;
+}
+
+function requiredEmail(value) {
+  const email = requiredText(value, "email", 5, 254).toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new InputError("email format is invalid");
+  }
+  return email;
+}
+
+function optionalInteger(value, field, defaultValue, min, max) {
+  if (value === undefined || value === null) return defaultValue;
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new InputError(`${field} is invalid`);
+  }
+  return value;
+}
+
 export function parseClassCode(value) {
   const code = requiredText(value, "class code", 3, 32).toUpperCase();
   if (!CLASS_CODE_PATTERN.test(code)) {
@@ -107,5 +129,25 @@ export function parseProgressInput(body) {
     fichesRead: parseIdArray(input.fichesRead, "fichesRead"),
     activitesCompleted: parseIdArray(input.activitesCompleted, "activitesCompleted"),
     scores: parseScores(input.scores),
+  };
+}
+
+export function parseTeacherInvitationInput(body) {
+  const input = requireObject(body);
+  const role = requiredText(input.role, "role", 3, 20);
+  if (!new Set(["teacher", "admin"]).has(role)) throw new InputError("role is invalid");
+  return {
+    schoolId: requiredSafeId(input.schoolId, "schoolId"),
+    email: requiredEmail(input.email),
+    role,
+    expiresInDays: optionalInteger(input.expiresInDays, "expiresInDays", 7, 1, 30),
+  };
+}
+
+export function parseTeacherSessionInput(body) {
+  const input = requireObject(body);
+  return {
+    invitationToken: requiredText(input.invitationToken, "invitationToken", 24, 240),
+    pseudo: requiredText(input.pseudo, "pseudo", 2, 40),
   };
 }

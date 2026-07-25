@@ -1,7 +1,13 @@
 import { createServer } from "node:http";
 
 import { InputError, UnauthorizedError } from "./errors.js";
-import { parseClassInput, parseProgressInput, parseUserInput } from "./validation.js";
+import {
+  parseClassInput,
+  parseProgressInput,
+  parseTeacherInvitationInput,
+  parseTeacherSessionInput,
+  parseUserInput,
+} from "./validation.js";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 const DEFAULT_RATE_LIMIT = { windowMs: 60_000, maxRequests: 120 };
@@ -141,6 +147,16 @@ export function createApp({
 
       if (req.method === "POST" && path === "/api/internal/users") {
         send(res, 201, await db.createUser(parseUserInput(await readJson(req))), cors);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/internal/teacher-invitations") {
+        send(res, 201, await db.createTeacherInvitation(parseTeacherInvitationInput(await readJson(req))), cors);
+        return;
+      }
+
+      if (req.method === "POST" && path === "/api/internal/teacher-sessions") {
+        send(res, 201, await db.acceptTeacherInvitation(parseTeacherSessionInput(await readJson(req))), cors);
         return;
       }
 

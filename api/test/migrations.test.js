@@ -15,5 +15,6 @@ test("listMigrations includes tenant and access schema", async () => {
   assert.deepEqual(await listMigrations(), [
     "001_core",
     "002_tenants_access",
+    "003_auth_sessions",
   ]);
 });

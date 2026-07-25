@@ -237,3 +237,89 @@ test("rate limiting can be configured from environment", async () => {
   assert.equal((await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, headers)).statusCode, 201);
   assert.equal((await request(app, "POST", "/api/internal/classes", { code: "FREINET-6A" }, headers)).statusCode, 429);
 });
+
+test("teacher invitations return a one-time token without storing it in plain text", async () => {
+  const calls = [];
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      createTeacherInvitation: async (input) => {
+        calls.push(input);
+        return {
+          id: "invite-1",
+          schoolId: input.schoolId,
+          role: input.role,
+          expiresAt: "2026-08-01T00:00:00.000Z",
+          invitationToken: "one-time-token",
+        };
+      },
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/teacher-invitations", {
+    schoolId: "college-freinet",
+    email: " prof@example.com ",
+    role: "teacher",
+    expiresInDays: 7,
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(calls, [{
+    schoolId: "college-freinet",
+    email: "prof@example.com",
+    role: "teacher",
+    expiresInDays: 7,
+  }]);
+  assert.deepEqual(JSON.parse(response.body), {
+    id: "invite-1",
+    schoolId: "college-freinet",
+    role: "teacher",
+    expiresAt: "2026-08-01T00:00:00.000Z",
+    invitationToken: "one-time-token",
+  });
+});
+
+test("teacher session creation accepts an invitation token and returns a server session", async () => {
+  const app = createApp({
+    internalApiKey: "secret-key",
+    db: {
+      acceptTeacherInvitation: async (input) => ({
+        user: {
+          id: "teacher-1",
+          pseudo: input.pseudo,
+          role: "teacher",
+          organizationId: "org-freinet",
+          schoolId: "college-freinet",
+        },
+        session: {
+          id: "session-1",
+          expiresAt: "2026-08-01T00:00:00.000Z",
+        },
+      }),
+    },
+  });
+
+  const response = await request(app, "POST", "/api/internal/teacher-sessions", {
+    invitationToken: "one-time-token-with-enough-entropy",
+    pseudo: "Prof Freinet",
+  }, {
+    "x-infoscope-internal-key": "secret-key",
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(JSON.parse(response.body), {
+    user: {
+      id: "teacher-1",
+      pseudo: "Prof Freinet",
+      role: "teacher",
+      organizationId: "org-freinet",
+      schoolId: "college-freinet",
+    },
+    session: {
+      id: "session-1",
+      expiresAt: "2026-08-01T00:00:00.000Z",
+    },
+  });
+});
