@@ -1,0 +1,52 @@
+name: Scope SI CI
+
+on:
+  push:
+    branches: [main, feature/infoscope-internal-api]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  application-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check for obvious secrets
+        run: |
+          ! git grep -nE '(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|VERCEL_OIDC_TOKEN|POSTGRES_PASSWORD=|GODADDY_API_(KEY|SECRET)|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY)' -- ':!package-lock.json' ':!api/package-lock.json' ':!.github/workflows/ci.yml'
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Build Scope SI application
+        run: npm run build
+
+  api-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Run API tests
+        working-directory: api
+        run: npm test
